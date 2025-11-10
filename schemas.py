@@ -1,7 +1,7 @@
 # schemas.py
 from pydantic import BaseModel, EmailStr, Field
-from datetime import date, datetime
-from typing import Optional
+from datetime import date, datetime # <-- مطمئن شوید 'datetime' وارد شده
+from typing import Optional, Any
 
 # =================================================================
 # ۱. مدل پیام
@@ -15,7 +15,7 @@ class Message(BaseModel):
 class HastaCreate(BaseModel):
     adsoyad: str
     tckimlik: str
-    sifre: str
+    sifre: str = Field(..., min_length=10, max_length=72)
     email: Optional[EmailStr] = None
     telefon: Optional[str] = None
     dogumtarihi: Optional[date] = None
@@ -24,7 +24,6 @@ class HastaBase(BaseModel):
     hastaid: int
     adsoyad: str
     tckimlik: str
-    sifre: str
     email: Optional[EmailStr] = None
     telefon: Optional[str] = None
     dogumtarihi: Optional[date] = None
@@ -86,29 +85,42 @@ class BiletBase(BaseModel):
     class Config:
         from_attributes = True
 
-# --- (کد جدید) ---
 # =================================================================
-# ۵. مدل خروجی برای صفحه "ردیابی صف"
+# ۵. مدل ورودی برای صفحه "ردیابی صف"
+# =================================================================
+class BiletTakipGiris(BaseModel):
+    baglantikodu: str
+    telefon: str
+
+# =================================================================
+# ۶. مدل خروجی برای صفحه "ردیابی صف" (این کلاس جا افتاده بود)
 # =================================================================
 class SiraTakipDetay(BaseModel):
-    # اطلاعات بلیت
-    sizin_numaraniz: int         # مثال: 26
-    durum: str                   # مثال: "Bekliyor"
-    giris_zamani: datetime       # مثال: "2025-11-08T..."
-    tahmini_bekleme_suresi: str  # مثال: "Yaklaşık 5 Dakika"
-
-    # اطلاعات لینک‌شده (Joined)
-    bolum_adi: str               # مثال: "Genel Muayene"
-    doktor_adi: str              # مثال: "Dr. Ahmet Yılmaz"
-
-    # اطلاعات محاسباتی
-    mevcut_sira: int             # مثال: 23
-    kalan_hasta: int             # مثال: 3
+    sizin_numaraniz: int
+    durum: str
+    giris_zamani: datetime
+    tahmini_bekleme_suresi: str
+    bolum_adi: str
+    doktor_adi: str
+    mevcut_sira: int
+    kalan_hasta: int
 
     class Config:
         from_attributes = True
 
+# =================================================================
+# ۷. مدل‌های فرم پرسش و پاسخ (Soru-Cevap)
+# =================================================================
+class FormCreate(BaseModel):
+    biletid: int
+    ai_ozet: str
+    formverisi_json: Optional[Any] = None
 
-class BiletTakipGiris(BaseModel):
-    baglantikodu: str 
-    telefon: str            
+class FormBase(BaseModel):
+    formid: int
+    biletid: int
+    ai_ozet: str
+    gonderimtarihi: datetime
+
+    class Config:
+        from_attributes = True

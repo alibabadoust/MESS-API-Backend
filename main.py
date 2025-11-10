@@ -4,7 +4,7 @@ from db import engine
 import models
 
 
-from routers import sehirler_router, hastalar_router, biletler_router
+from routers import sehirler_router, hastalar_router, biletler_router, formlar_router
 
 models.Base.metadata.create_all(bind=engine)
 
@@ -20,3 +20,4 @@ def read_root():
 app.include_router(sehirler_router.router)
 app.include_router(hastalar_router.router)
 app.include_router(biletler_router.router)
+app.include_router(formlar_router.router)

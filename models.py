@@ -76,3 +76,24 @@ class BiletAktif(Base):
     olusturmatarihi = Column(TIMESTAMP)
     eskibiletid = Column(Integer, ForeignKey("sirabiletleri_arsiv.biletid"), nullable=True) # Bu FK
     tahminibeklemesuresi = Column(String(50))    
+
+# models.py
+
+# ... (کلاس‌های Sehir, Hastane, Hasta, Poliklinik, Doktor, BiletArsiv, BiletAktif در بالا هستند) ...
+
+# --- (کد جدید) ---
+# ۸. مدل جدول فرم‌های پرسش و پاسخ
+class SoruCevapFormu(Base):
+    __tablename__ = "sorucevapformlaritablosu" # نام دقیق جدول شما
+
+    formid = Column(Integer, primary_key=True, index=True)
+    # (JSONB در PostgreSQL با JSON در SQLAlchemy کار می‌کند)
+    # ما می‌توانیم کل متن گفتگو را در اینجا ذخیره کنیم (برای سوابق)
+    formverisi_json = Column(JSON, nullable=True) 
+
+    # خلاصه‌ای که Gemini می‌سازد در اینجا ذخیره می‌شود
+    ai_ozet = Column(String) 
+    gonderimtarihi = Column(TIMESTAMP)
+
+    # اتصال یک-به-یک به بلیت فعال
+    biletid = Column(Integer, ForeignKey("sirabiletleri_aktiftablosu.biletid"), unique=True)   
