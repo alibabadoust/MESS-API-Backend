@@ -96,6 +96,7 @@ class BiletTakipGiris(BaseModel):
 # ۶. مدل خروجی برای صفحه "ردیابی صف" (این کلاس جا افتاده بود)
 # =================================================================
 class SiraTakipDetay(BaseModel):
+    biletid: int
     sizin_numaraniz: int
     durum: str
     giris_zamani: datetime

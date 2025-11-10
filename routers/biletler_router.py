@@ -75,6 +75,8 @@ def get_bilet_detay(giris_data: schemas.BiletTakipGiris, db: Session = Depends(g
 
     # ۱. اطلاعات اصلی بلیت، دکتر، پلی‌کلینیک و (مهم) بیمار را JOIN می‌کنیم
     bilet_ana_bilgi = db.query(
+        models.BiletAktif.biletid,
+        models.BiletAktif.biletid,
         models.BiletAktif.siranumarasi.label("sizin_numaraniz"),
         models.BiletAktif.durum,
         models.BiletAktif.olusturmatarihi.label("giris_zamani"),
@@ -116,6 +118,7 @@ def get_bilet_detay(giris_data: schemas.BiletTakipGiris, db: Session = Depends(g
 
     # ۴. تمام داده‌ها را در مدل خروجی SiraTakipDetay بسته‌بندی می‌کنیم
     response_data = schemas.SiraTakipDetay(
+        biletid=bilet_ana_bilgi.biletid,
         sizin_numaraniz=bilet_ana_bilgi.sizin_numaraniz,
         durum=bilet_ana_bilgi.durum,
         giris_zamani=bilet_ana_bilgi.giris_zamani,
