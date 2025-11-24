@@ -69,7 +69,7 @@ class DoktorBase(BaseModel):
 # ۴. مدل‌های بلیت (Bilet)
 # =================================================================
 class BiletCreate(BaseModel):
-    hastaid: int
+    tckimlik: str
     doktorid: int
 
 class BiletBase(BaseModel):
