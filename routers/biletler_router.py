@@ -11,28 +11,46 @@ router = APIRouter(
     tags=["Bilet İşlemleri"]
 )
 
-# --- API ۱: ایجاد بلیت هوشمند (با ورودی TC Kimlik) ---
+# =================================================================
+# API 1: ایجاد بلیت هوشمند (Sıra Alma)
+# =================================================================
 @router.post("/", response_model=schemas.BiletBase)
 def create_bilet(bilet_data: schemas.BiletCreate, db: Session = Depends(get_db)):
     """
-    Yeni bir sıra bileti oluşturur (TC Kimlik ile).
+    Yeni bir sıra bileti oluşturur.
     - Hasta TC Kimlik numarası ile bulunur.
-    - 65 yaş önceliği uygulanır.
+    - Aynı doktordan "Bekliyor" durumunda aktif bileti varsa izin vermez.
+    - Geçmiş randevular (Tamamlandi/Gelmeyen) yeni randevuya engel olmaz.
+    - 65 yaş üstü önceliği uygulanır (Sıra No 1-99 arası).
     """
 
-    # --- ۱. پیدا کردن بیمار با استفاده از TC Kimlik ---
+    # --- 1. پیدا کردن بیمار با TC Kimlik ---
     hasta = db.query(models.Hasta).filter(models.Hasta.tckimlik == bilet_data.tckimlik).first()
     
     if not hasta:
         raise HTTPException(status_code=404, detail="Bu TC Kimlik numarasına sahip hasta bulunamadı. Lütfen önce kayıt olun.")
     
-    # --- ۲. محاسبه سن برای اولویت‌بندی ---
+    # --- 2. بررسی نوبت تکراری فعال ---
+    # فقط چک می‌کنیم آیا نوبتی دارد که هنوز "منتظر" (Bekliyor) است؟
+    nوبت_تکراری = db.query(models.BiletAktif).filter(
+        models.BiletAktif.hastaid == hasta.hastaid,
+        models.BiletAktif.doktorid == bilet_data.doktorid,
+        models.BiletAktif.durum == 'Bekliyor' # نوبت‌های تمام شده مهم نیستند
+    ).first()
+
+    if nوبت_تکراری:
+        raise HTTPException(
+            status_code=400, 
+            detail=f"Siz zaten bu doktordan sıra aldınız. Mevcut Bilet Kodunuz: {nوبت_تکراری.baglantikodu}"
+        )
+
+    # --- 3. محاسبه سن برای اولویت‌بندی ---
     bugun = datetime.date.today()
     dogum = hasta.dogumtarihi
     yas = bugun.year - dogum.year - ((bugun.month, bugun.day) < (dogum.month, dogum.day))
     is_oncelikli = (yas >= 65) 
 
-    # --- ۳. دریافت کدهای دکتر, پلی‌کلینیک, بیمارستان و شهر ---
+    # --- 4. دریافت کدهای دکتر, پلی‌کلینیک, بیمارستان و شهر ---
     try:
         doktor_ve_kodlar = db.query(
             models.Doktor.doktorid, models.Doktor.poliklinikid, models.Doktor.odakodu,
@@ -54,27 +72,31 @@ def create_bilet(bilet_data: schemas.BiletCreate, db: Session = Depends(get_db))
         print(f"Kod hatasi: {e}")
         raise HTTPException(status_code=500, detail="Kodları alırken veritabanı hatası oluştu.")
 
-    # --- ۴. محاسبه شماره نوبت هوشمند (بر اساس سن) ---
+    # --- 5. محاسبه شماره نوبت هوشمند (بر اساس سن) ---
     yeni_sira_numarasi = 0
     
     if is_oncelikli:
-        # === اولویت دار (۶۵+) ===
+        # === اولویت دار (65+) ===
+        # آخرین شماره در بازه 1 تا 99 را پیدا کن
         son_sira = db.query(func.max(models.BiletAktif.siranumarasi)).filter(
             models.BiletAktif.poliklinikid == doktor_ve_kodlar.poliklinikid,
             func.cast(models.BiletAktif.olusturmatarihi, Date) == datetime.date.today(),
-            models.BiletAktif.siranumarasi < 100 # زیر ۱۰۰
+            models.BiletAktif.siranumarasi < 100 # زیر 100
         ).scalar()
+        
         yeni_sira_numarasi = (son_sira or 0) + 1
     else:
-        # === عادی (زیر ۶۵) ===
+        # === عادی (زیر 65) ===
+        # آخرین شماره در بازه 100 به بالا را پیدا کن
         son_sira = db.query(func.max(models.BiletAktif.siranumarasi)).filter(
             models.BiletAktif.poliklinikid == doktor_ve_kodlar.poliklinikid,
             func.cast(models.BiletAktif.olusturmatarihi, Date) == datetime.date.today(),
-            models.BiletAktif.siranumarasi >= 100 # بالای ۱۰۰
+            models.BiletAktif.siranumarasi >= 100 # بالای 100
         ).scalar()
+        
         yeni_sira_numarasi = (son_sira or 100) + 1
 
-    # --- ۵. ساخت کد ۱۱ رقمی و ذخیره ---
+    # --- 6. ساخت کد 11 رقمی ---
     sira_kodu_3_hane = f"{yeni_sira_numarasi:03d}" 
     
     yeni_baglanti_kodu = (
@@ -85,10 +107,12 @@ def create_bilet(bilet_data: schemas.BiletCreate, db: Session = Depends(get_db))
         f"{sira_kodu_3_hane}"
     )
     
+    # محاسبه زمان تخمینی
     tahmini_sure = f"Yaklaşık {yeni_sira_numarasi * 5} Dakika" 
     if is_oncelikli:
          tahmini_sure = "Öncelikli Sıra (Yaklaşık 5 Dakika)"
 
+    # --- 7. ذخیره در دیتابیس ---
     yeni_bilet = models.BiletAktif(
         baglantikodu=yeni_baglanti_kodu,
         hastaid=hasta.hastaid, # استفاده از ID بیماری که پیدا کردیم
@@ -108,19 +132,22 @@ def create_bilet(bilet_data: schemas.BiletCreate, db: Session = Depends(get_db))
     except Exception as e:
         db.rollback()
         print(f"Kayit hatasi: {e}")
-        raise HTTPException(status_code=500, detail="Bilet kaydedilirken hata oluştu.")
+        # اگر خطای Unique رخ داد (احتمال کم)، یک خطای عمومی برگردان
+        raise HTTPException(status_code=400, detail="Bir hata oluştu. Lütfen tekrar deneyin.")
     
     return yeni_bilet
 
 
-# --- API ۲: ردیابی بلیت (بدون تغییر) ---
+# =================================================================
+# API 2: ردیابی بلیت (Sıra Takibi)
+# =================================================================
 @router.post("/takip/", response_model=schemas.SiraTakipDetay)
 def get_bilet_detay(giris_data: schemas.BiletTakipGiris, db: Session = Depends(get_db)):
     """
     Bilet Kodu VE Telefon Numarası ile sıra takip detaylarını getirir.
     """
     
-    # ۱. دریافت اطلاعات
+    # 1. دریافت اطلاعات بلیت و بیمار
     bilet_ana_bilgi = db.query(
         models.BiletAktif.biletid,
         models.BiletAktif.siranumarasi.label("sizin_numaraniz"),
@@ -144,11 +171,11 @@ def get_bilet_detay(giris_data: schemas.BiletTakipGiris, db: Session = Depends(g
     if not bilet_ana_bilgi:
         raise HTTPException(status_code=404, detail="Bu koda ait aktif bir bilet bulunamadı.")
     
-    # ۲. چک کردن شماره موبایل
+    # 2. چک کردن شماره موبایل
     if giris_data.telefon not in bilet_ana_bilgi.telefon:
             raise HTTPException(status_code=403, detail="Telefon numarası bilet ile eşleşmiyor.") 
     
-    # ۳. محاسبه نوبت فعلی
+    # 3. محاسبه "نوبت فعلی" (کسی که الان داخل اتاق است)
     mevcut_sira_raw = db.query(func.min(models.BiletAktif.siranumarasi)).filter(
         models.BiletAktif.poliklinikid == bilet_ana_bilgi.poliklinikid,
         models.BiletAktif.durum == "Cagirildi",
@@ -157,11 +184,14 @@ def get_bilet_detay(giris_data: schemas.BiletTakipGiris, db: Session = Depends(g
     
     mevcut_sira = mevcut_sira_raw or 0 
     
-    # ۴. محاسبه تعداد افراد باقیمانده (با در نظر گرفتن اولویت)
+    # 4. محاسبه دقیق "نفرات باقی‌مانده"
+    # (شمارش تعداد افرادی که در صف "Bekliyor" هستند و نوبتشان از شما جلوتر است)
     kalan_kisi_sayisi = db.query(func.count(models.BiletAktif.biletid)).filter(
         models.BiletAktif.poliklinikid == bilet_ana_bilgi.poliklinikid,
         models.BiletAktif.durum == "Bekliyor",
-        # شرط مهم: کسانی که شماره‌شان کمتر است جلوترند
+        
+        # شرط مهم برای سیستم اولویت‌دار:
+        # اگر شماره من 101 است، تمام شماره‌های 1 تا 99 (پیرمردها) + 100 (جوان قبلی) جلوترند.
         models.BiletAktif.siranumarasi < bilet_ana_bilgi.sizin_numaraniz
     ).scalar()
 

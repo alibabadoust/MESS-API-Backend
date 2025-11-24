@@ -125,3 +125,22 @@ class FormBase(BaseModel):
 
     class Config:
         from_attributes = True
+
+class DoktorEkraniDetay(BaseModel):
+    biletid: int
+    adsoyad: str            # نام بیمار
+    tckimlik: str           # کد ملی بیمار
+    yas: int                # سن بیمار
+    siranumarasi: int
+    ai_ozet: Optional[str] = "بیمار فرمی پر نکرده است." # خلاصه هوش مصنوعی
+    
+    class Config:
+        from_attributes = True        
+class DoktorBekleyenHasta(BaseModel):
+    baglantikodu: str
+    siranumarasi: int
+    adsoyad: str
+    
+    class Config:
+        from_attributes = True        
+  
