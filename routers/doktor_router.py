@@ -76,3 +76,30 @@ def get_bekleyen_hastalar(doktor_id: int, db: Session = Depends(get_db)):
     ).order_by(models.BiletAktif.siranumarasi).all()
     
     return bekleyenler   
+# --- (کد جدید) API: پایان ویزیت (تغییر وضعیت به Tamamlandi) ---
+# آدرس: POST /api/doktor/tamamla/{bilet_id}
+@router.post("/tamamla/{bilet_id}", response_model=schemas.Message)
+def muayene_tamamla(bilet_id: int, db: Session = Depends(get_db)):
+    """
+    Doktor muayeneyi bitirdiğinde bu endpoint çağrılır.
+    Biletin durumunu 'Tamamlandi' yapar.
+    (وقتی معاینه تمام شد، وضعیت بلیت را به 'Tamamlandi' تغییر می‌دهد.)
+    """
+    
+    # ۱. پیدا کردن بلیت با شناسه
+    bilet = db.query(models.BiletAktif).filter(models.BiletAktif.biletid == bilet_id).first()
+    
+    if not bilet:
+        raise HTTPException(status_code=404, detail="Bilet bulunamadı.")
+    
+    # ۲. تغییر وضعیت
+    bilet.durum = "Tamamlandi"
+    
+    # ۳. ذخیره در دیتابیس
+    try:
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Hata oluştu: {e}")
+    
+    return {"detail": "Muayene tamamlandı. (معاینه با موفقیت تمام شد)"}    
