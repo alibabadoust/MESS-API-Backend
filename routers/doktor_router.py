@@ -11,7 +11,7 @@ router = APIRouter(
     tags=["Doktor İşlemleri"]
 )
 
-# --- API: فراخوانی بیمار با کد ۱۱ رقمی ---
+# --- API 1: فراخوانی بیمار (Çağır) ---
 @router.post("/cagir/{baglanti_kodu}", response_model=schemas.DoktorEkraniDetay)
 def hasta_cagir(baglanti_kodu: str, db: Session = Depends(get_db)):
     """
@@ -47,16 +47,17 @@ def hasta_cagir(baglanti_kodu: str, db: Session = Depends(get_db)):
     if form and form.ai_ozet:
         ai_metni = form.ai_ozet 
 
-    # ۶. بازگرداندن اطلاعات (اصلاح شده: اضافه کردن biletid)
+    # ۶. بازگرداندن اطلاعات
     return {
-        "biletid": bilet.biletid,  # <--- این خط جا افتاده بود
+        "biletid": bilet.biletid,
         "adsoyad": hasta.adsoyad,
         "tckimlik": hasta.tckimlik,
         "yas": yas,
         "siranumarasi": bilet.siranumarasi,
         "ai_ozet": ai_metni
     }
-   
+    
+# --- API 2: لیست انتظار دکتر (Bekleyenler) ---
 @router.get("/bekleyenler/{doktor_id}", response_model=list[schemas.DoktorBekleyenHasta])
 def get_bekleyen_hastalar(doktor_id: int, db: Session = Depends(get_db)):
     """
@@ -66,24 +67,23 @@ def get_bekleyen_hastalar(doktor_id: int, db: Session = Depends(get_db)):
         models.BiletAktif.baglantikodu,
         models.BiletAktif.siranumarasi,
         models.Hasta.adsoyad
-    ).join(
-        models.Hasta, models.BiletAktif.hastaid == models.Hasta.hastaid
-    ).filter(
+    ).select_from(models.BiletAktif) \
+     .join(models.Hasta, models.BiletAktif.hastaid == models.Hasta.hastaid) \
+     .filter(
         models.BiletAktif.doktorid == doktor_id,
-        models.BiletAktif.durum == 'Bekliyor', # فقط کسانی که منتظرند
-        # (اختیاری: فقط امروز)
-        func.cast(models.BiletAktif.olusturmatarihi, Date) == datetime.date.today()
+        models.BiletAktif.durum == 'Bekliyor',
+        # (برای تست، فیلتر تاریخ را فعلا غیرفعال نگه داشتم)
+        # func.cast(models.BiletAktif.olusturmatarihi, Date) == datetime.date.today()
     ).order_by(models.BiletAktif.siranumarasi).all()
     
-    return bekleyenler   
-# --- (کد جدید) API: پایان ویزیت (تغییر وضعیت به Tamamlandi) ---
-# آدرس: POST /api/doktor/tamamla/{bilet_id}
+    return bekleyenler
+
+# --- API 3: پایان ویزیت (Tamamla) ---
 @router.post("/tamamla/{bilet_id}", response_model=schemas.Message)
 def muayene_tamamla(bilet_id: int, db: Session = Depends(get_db)):
     """
     Doktor muayeneyi bitirdiğinde bu endpoint çağrılır.
     Biletin durumunu 'Tamamlandi' yapar.
-    (وقتی معاینه تمام شد، وضعیت بلیت را به 'Tamamlandi' تغییر می‌دهد.)
     """
     
     # ۱. پیدا کردن بلیت با شناسه
@@ -102,4 +102,33 @@ def muayene_tamamla(bilet_id: int, db: Session = Depends(get_db)):
         db.rollback()
         raise HTTPException(status_code=500, detail=f"Hata oluştu: {e}")
     
-    return {"detail": "Muayene tamamlandı. (معاینه با موفقیت تمام شد)"}    
+    return {"detail": "Muayene tamamlandı"}
+
+
+# --- (جدید) API 4: بیمار نیامد (Gelmedi) ---
+# آدرس: POST /api/doktor/gelmedi/{bilet_id}
+@router.post("/gelmedi/{bilet_id}", response_model=schemas.Message)
+def hasta_gelmedi(bilet_id: int, db: Session = Depends(get_db)):
+    """
+    Hasta sırası geldiği halde odada yoksa bu endpoint çağrılır.
+    Biletin durumunu 'Gelmeyen' yapar.
+    (اگر بیمار در نوبتش حاضر نبود، وضعیت را به 'Gelmeyen' تغییر می‌دهد.)
+    """
+    
+    # ۱. پیدا کردن بلیت با شناسه
+    bilet = db.query(models.BiletAktif).filter(models.BiletAktif.biletid == bilet_id).first()
+    
+    if not bilet:
+        raise HTTPException(status_code=404, detail="Bilet bulunamadı.")
+    
+    # ۲. تغییر وضعیت به 'Gelmeyen'
+    bilet.durum = "Gelmeyen"
+    
+    # ۳. ذخیره در دیتابیس
+    try:
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Hata oluştu: {e}")
+    
+    return {"detail": "Hasta durumu 'Gelmeyen' olarak güncellendi."}

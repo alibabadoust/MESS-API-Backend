@@ -204,3 +204,142 @@ def get_bilet_detay(giris_data: schemas.BiletTakipGiris, db: Session = Depends(g
     )
     
     return response_data
+# --- (REWRITTEN AND FIXED) API 3: مدیریت تاخیر یا لغو نوبت ---
+# routers/biletler_router.py
+
+# ... (کدهای قبلی ثابت هستند) ...
+
+@router.post("/ertele/", response_model=schemas.BiletBase)
+def ertele_veya_iptal_et(ertele_data: schemas.BiletErteleme, db: Session = Depends(get_db)):
+    
+    # 1. پیدا کردن بلیت فعلی
+    eski_bilet = db.query(models.BiletAktif).filter(
+        models.BiletAktif.baglantikodu == ertele_data.baglantikodu,
+        models.BiletAktif.durum == 'Bekliyor'
+    ).first()
+    
+    if not eski_bilet:
+        raise HTTPException(status_code=404, detail="Aktif bilet bulunamadı veya zaten işlem yapılmış.")
+
+    # --- سناریوی ۱: لغو کامل ---
+    if ertele_data.aksiyon == 'iptal':
+        eski_bilet.durum = "IptalEdildi"
+        db.commit()
+        return eski_bilet
+
+    # --- سناریوی ۲: تاخیر ---
+    elif ertele_data.aksiyon in ['15_dk', '30_dk', '45_dk']:
+        try:
+            # الف) کپی اطلاعات
+            eski_id = eski_bilet.biletid
+            eski_hasta_id = eski_bilet.hastaid
+            eski_doktor_id = eski_bilet.doktorid
+            eski_poliklinik_id = eski_bilet.poliklinikid
+            
+            # ب) ایجاد آرشیو
+            bilet_arsiv = models.BiletArsiv(
+                biletid=eski_bilet.biletid,
+                baglantikodu=eski_bilet.baglantikodu,
+                hastaid=eski_bilet.hastaid,
+                doktorid=eski_bilet.doktorid,
+                poliklinikid=eski_bilet.poliklinikid,
+                siranumarasi=eski_bilet.siranumarasi,
+                durum="Ertelendi",
+                olusturmatarihi=eski_bilet.olusturmatarihi,
+                kapanistarihi=datetime.datetime.now(),
+                eskibiletid=eski_bilet.eskibiletid,
+                tahminibeklemesuresi=eski_bilet.tahminibeklemesuresi
+            )
+            db.add(bilet_arsiv)
+            
+            # ==================================================================
+            # ج) *** حذف مستقیم و اجباری فرم ***
+            # (این خط هر فرمی که biletid آن برابر با بلیت فعلی باشد را بدون سوال پاک می‌کند)
+            db.query(models.SoruCevapFormu).filter(
+                models.SoruCevapFormu.biletid == eski_id
+            ).delete()
+            
+            db.flush() # اعمال آنی حذف فرم
+            # ==================================================================
+            
+            # د) حذف بلیت از جدول فعال
+            db.delete(eski_bilet) 
+            db.flush() # اعمال آنی حذف بلیت
+
+            # ه) محاسبه شماره نوبت جدید
+            hasta = db.query(models.Hasta).filter(models.Hasta.hastaid == eski_hasta_id).first()
+            bugun = datetime.date.today()
+            dogum = hasta.dogumtarihi
+            yas = bugun.year - dogum.year - ((bugun.month, bugun.day) < (dogum.month, dogum.day))
+            is_oncelikli = (yas >= 65)
+
+            yeni_sira_numarasi = 0
+            if is_oncelikli:
+                son_sira = db.query(func.max(models.BiletAktif.siranumarasi)).filter(
+                    models.BiletAktif.poliklinikid == eski_poliklinik_id,
+                    func.cast(models.BiletAktif.olusturmatarihi, Date) == bugun,
+                    models.BiletAktif.siranumarasi < 100
+                ).scalar()
+                yeni_sira_numarasi = (son_sira or 0) + 1
+            else:
+                son_sira = db.query(func.max(models.BiletAktif.siranumarasi)).filter(
+                    models.BiletAktif.poliklinikid == eski_poliklinik_id,
+                    func.cast(models.BiletAktif.olusturmatarihi, Date) == bugun,
+                    models.BiletAktif.siranumarasi >= 100
+                ).scalar()
+                yeni_sira_numarasi = (son_sira or 100) + 1
+
+            sira_kodu_3_hane = f"{yeni_sira_numarasi:03d}"
+            
+            # و) ساخت کد جدید (با رفع ابهام JOIN)
+            doktor_info = db.query(
+                 models.Doktor.odakodu, models.Poliklinik.poliklinikkodu, 
+                 models.Hastane.hastanekodu, models.Sehir.sehirkodu
+            ).select_from(models.Doktor)\
+             .join(models.Poliklinik, models.Doktor.poliklinikid == models.Poliklinik.poliklinikid)\
+             .join(models.Hastane, models.Poliklinik.hastaneid == models.Hastane.hastaneid)\
+             .join(models.Sehir, models.Hastane.sehirid == models.Sehir.sehirid)\
+             .filter(models.Doktor.doktorid == eski_doktor_id).first()
+
+            if not doktor_info:
+                 raise HTTPException(status_code=500, detail="Doktor bilgileri bulunamadı.")
+
+            yeni_baglanti_kodu = (
+                f"{doktor_info.sehirkodu}"
+                f"{doktor_info.hastanekodu}"
+                f"{doktor_info.poliklinikkodu}"
+                f"{doktor_info.odakodu}"
+                f"{sira_kodu_3_hane}"
+            )
+            
+            # ز) محاسبه زمان و ثبت
+            eklenen_dakika = int(ertele_data.aksiyon.split('_')[0])
+            tahmini_sure = f"Ertelendi (+{eklenen_dakika} dk). Yaklaşık {yeni_sira_numarasi * 5} Dakika"
+            if is_oncelikli:
+                 tahmini_sure = f"Öncelikli - Ertelendi (+{eklenen_dakika} dk). Yaklaşık 5 Dakika"
+
+            yeni_bilet = models.BiletAktif(
+                baglantikodu=yeni_baglanti_kodu,
+                hastaid=eski_hasta_id,
+                doktorid=eski_doktor_id,
+                poliklinikid=eski_poliklinik_id,
+                siranumarasi=yeni_sira_numarasi,
+                durum="Bekliyor",
+                olusturmatarihi=datetime.datetime.now(),
+                eskibiletid=eski_id, 
+                tahminibeklemesuresi=tahmini_sure
+            )
+            
+            db.add(yeni_bilet)
+            db.commit()
+            db.refresh(yeni_bilet)
+            
+            return yeni_bilet
+
+        except Exception as e:
+            db.rollback()
+            print(f"ERTELEME HATASI: {e}")
+            raise HTTPException(status_code=500, detail=f"İşlem sırasında bir hata oluştu: {e}")
+
+    else:
+        raise HTTPException(status_code=400, detail="Geçersiz işlem türü.")

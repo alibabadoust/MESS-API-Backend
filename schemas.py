@@ -143,4 +143,12 @@ class DoktorBekleyenHasta(BaseModel):
     
     class Config:
         from_attributes = True        
-  
+# schemas.py
+# ... (کدهای قبلی) ...
+
+# =================================================================
+# ۱۰. مدل درخواست تاخیر/لغو (Erteleme Talebi)
+# =================================================================
+class BiletErteleme(BaseModel):
+    baglantikodu: str  # کد بلیت فعلی
+    aksiyon: str       # انتخاب کاربر: '15_dk', '30_dk', '45_dk', 'iptal'  
