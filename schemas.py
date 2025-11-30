@@ -97,6 +97,7 @@ class BiletTakipGiris(BaseModel):
 # =================================================================
 class SiraTakipDetay(BaseModel):
     biletid: int
+    hastaid: int
     sizin_numaraniz: int
     durum: str
     giris_zamani: datetime
@@ -152,3 +153,25 @@ class DoktorBekleyenHasta(BaseModel):
 class BiletErteleme(BaseModel):
     baglantikodu: str  # کد بلیت فعلی
     aksiyon: str       # انتخاب کاربر: '15_dk', '30_dk', '45_dk', 'iptal'  
+# schemas.py
+# ...
+
+# =================================================================
+# ۱۰. مدل‌های بازی (Gamification)
+# =================================================================
+
+# ورودی برای ثبت امتیاز
+class SkorCreate(BaseModel):
+    hastaid: int
+    oyunadi: str
+    skor: int
+
+# خروجی برای نمایش در Leaderboard
+class SkorBase(BaseModel):
+    adsoyad: str  # نام بیمار (از JOIN می‌آید)
+    skor: int
+    tarih: datetime
+    
+    class Config:
+        from_attributes = True
+    

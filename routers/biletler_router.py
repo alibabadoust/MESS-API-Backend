@@ -146,6 +146,7 @@ def get_bilet_detay(giris_data: schemas.BiletTakipGiris, db: Session = Depends(g
     # 1. دریافت اطلاعات بلیت و بیمار
     bilet_ana_bilgi = db.query(
         models.BiletAktif.biletid,
+        models.BiletAktif.hastaid,
         models.BiletAktif.siranumarasi.label("sizin_numaraniz"),
         models.BiletAktif.durum,
         models.BiletAktif.olusturmatarihi.label("giris_zamani"),
@@ -193,6 +194,7 @@ def get_bilet_detay(giris_data: schemas.BiletTakipGiris, db: Session = Depends(g
 
     response_data = schemas.SiraTakipDetay(
         biletid=bilet_ana_bilgi.biletid,
+        hastaid=bilet_ana_bilgi.hastaid,
         sizin_numaraniz=bilet_ana_bilgi.sizin_numaraniz,
         durum=bilet_ana_bilgi.durum,
         giris_zamani=bilet_ana_bilgi.giris_zamani,

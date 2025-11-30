@@ -97,3 +97,16 @@ class SoruCevapFormu(Base):
 
     # اتصال یک-به-یک به بلیت فعال
     biletid = Column(Integer, ForeignKey("sirabiletleri_aktiftablosu.biletid"), unique=True)   
+
+# models.py
+# ...
+
+# ۹. مدل جدول امتیازات بازی
+class OyunSkoru(Base):
+    __tablename__ = "oyunskorlaritablosu"
+    
+    skorid = Column(Integer, primary_key=True, index=True)
+    hastaid = Column(Integer, ForeignKey("hastalartablosu.hastaid"))
+    oyunadi = Column(String(50)) # مثلاً "Snake" یا "Puzzle"
+    skor = Column(Integer)
+    tarih = Column(TIMESTAMP)    
