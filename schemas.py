@@ -175,3 +175,21 @@ class SkorBase(BaseModel):
     class Config:
         from_attributes = True
     
+# =================================================================
+# ۱۱. مدل افزودن دکتر (Admin - Doktor Ekleme)
+# =================================================================
+class DoktorCreate(BaseModel):
+    adsoyad: str           # نام و نام خانوادگی (مثلاً: "Dr. Ali Veli")
+    uzmanlikalani: str     # تخصص (مثلاً: "Kardiyoloji")
+    poliklinikid: int      # poliklnik kodu
+    odakodu: str           # oda kodu  (مثلاً: "01")    
+
+# schemas.py
+# ...
+
+# =================================================================
+# ۱۲. مدل آمار فرم‌های هوش مصنوعی
+# =================================================================
+class FormIstatistik(BaseModel):
+    toplam_form_sayisi: int   # تعداد کل
+    bugunku_form_sayisi: int  # تعداد امروز    

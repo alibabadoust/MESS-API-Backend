@@ -5,6 +5,8 @@ from typing import List
 import models, schemas
 from db import get_db
 import datetime
+from sqlalchemy.orm import Session
+from sqlalchemy import func, Date  
 
 router = APIRouter(
     prefix="/api/formlar",      # تمام آدرس‌های این فایل با /api/formlar شروع می‌شوند
@@ -63,3 +65,32 @@ def create_form(form_data: schemas.FormCreate, db: Session = Depends(get_db)):
 
     # ۴. فرم ذخیره شده را برمی‌گردانیم
     return db_form
+
+
+
+
+
+# routers/formlar_router.py
+# ...
+
+# --- (جدید) API 3: دریافت آمار فرم‌های پر شده ---
+# آدرس: GET /api/formlar/istatistik/genel
+@router.get("/istatistik/genel", response_model=schemas.FormIstatistik)
+def get_form_istatistikleri(db: Session = Depends(get_db)):
+    """
+    Gemini tarafından doldurulan toplam ve günlük form sayısını getirir.
+    (تعداد کل و روزانه فرم‌های پر شده توسط Gemini را برمی‌گرداند.)
+    """
+    
+    # ۱. شمارش کل فرم‌ها
+    toplam = db.query(func.count(models.SoruCevapFormu.formid)).scalar() or 0
+    
+    # ۲. شمارش فرم‌های امروز
+    bugun = db.query(func.count(models.SoruCevapFormu.formid)).filter(
+        func.cast(models.SoruCevapFormu.gonderimtarihi, Date) == datetime.date.today()
+    ).scalar() or 0
+    
+    return {
+        "toplam_form_sayisi": toplam,
+        "bugunku_form_sayisi": bugun
+    }    

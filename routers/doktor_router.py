@@ -132,3 +132,40 @@ def hasta_gelmedi(bilet_id: int, db: Session = Depends(get_db)):
         raise HTTPException(status_code=500, detail=f"Hata oluştu: {e}")
     
     return {"detail": "Hasta durumu 'Gelmeyen' olarak güncellendi."}
+# routers/doktor_router.py
+# ...
+
+# --- (جدید) API 5: افزودن دکتر جدید (پنل ادمین) ---
+# آدرس: POST /api/doktor/ekle
+@router.post("/ekle", response_model=schemas.Message)
+def doktor_ekle(doktor_data: schemas.DoktorCreate, db: Session = Depends(get_db)):
+    """
+    Yeni bir doktor kaydeder. (Admin Paneli için)
+    """
+    
+    # ۱. چک می‌کنیم که پلی‌کلینیک وجود داشته باشد
+    poliklinik = db.query(models.Poliklinik).filter(
+        models.Poliklinik.poliklinikid == doktor_data.poliklinikid
+    ).first()
+    
+    if not poliklinik:
+        raise HTTPException(status_code=404, detail="Seçilen poliklinik bulunamadı.")
+
+    # ۲. ساخت آبجکت دکتر جدید
+    yeni_doktor = models.Doktor(
+        adsoyad=doktor_data.adsoyad,
+        uzmanlikalani=doktor_data.uzmanlikalani,
+        poliklinikid=doktor_data.poliklinikid,
+        odakodu=doktor_data.odakodu
+    )
+    
+    # ۳. ذخیره در دیتابیس
+    try:
+        db.add(yeni_doktor)
+        db.commit()
+        db.refresh(yeni_doktor)
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Doktor kaydedilemedi: {e}")
+        
+    return {"detail": f"Doktor '{yeni_doktor.adsoyad}' başarıyla eklendi."}    
