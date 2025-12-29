@@ -2,7 +2,7 @@
 from fastapi import FastAPI
 from db import engine
 import models
-
+import os
 
 from routers import sehirler_router, hastalar_router, biletler_router, formlar_router , doktor_router, yonetim_router, oyun_router
 

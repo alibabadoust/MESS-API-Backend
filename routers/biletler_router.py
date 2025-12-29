@@ -315,11 +315,29 @@ def ertele_veya_iptal_et(ertele_data: schemas.BiletErteleme, db: Session = Depen
             )
             
             # ز) محاسبه زمان و ثبت
+            # ز) محاسبه زمان دقیق و منطقی (اصلاح شده)
             eklenen_dakika = int(ertele_data.aksiyon.split('_')[0])
-            tahmini_sure = f"Ertelendi (+{eklenen_dakika} dk). Yaklaşık {yeni_sira_numarasi * 5} Dakika"
-            if is_oncelikli:
-                 tahmini_sure = f"Öncelikli - Ertelendi (+{eklenen_dakika} dk). Yaklaşık 5 Dakika"
+            
+            # 1. شمارش تعداد کسانی که واقعاً در صف هستند و نوبتشان از نوبت جدید من جلوتر است
+            # (یعنی کسانی که جلوی من ایستاده‌اند)
+            kisi_sayisi_sorgusu = db.query(func.count(models.BiletAktif.biletid)).filter(
+                models.BiletAktif.poliklinikid == eski_poliklinik_id,
+                models.BiletAktif.durum == "Bekliyor",
+                models.BiletAktif.siranumarasi < yeni_sira_numarasi
+            )
+            
+            bekleyen_kisi_sayisi = kisi_sayisi_sorgusu.scalar() or 0
+            
+            # 2. محاسبه زمان واقعی انتظار (هر نفر ۵ دقیقه)
+            gercek_bekleme_suresi = bekleyen_kisi_sayisi * 5
+            
+            # 3. زمان نهایی = زمان صف + زمانی که خود کاربر خواسته به تاخیر بیفتد
+            # (اینطوری اگر صف خلوت باشد هم، آن ۱۵ دقیقه تاخیر اعمال می‌شود)
+            toplam_sure = gercek_bekleme_suresi + eklenen_dakika
+            
+            tahmini_sure = f"Ertelendi (+{eklenen_dakika} dk). Yaklaşık {toplam_sure} Dakika"
 
+            # ثبت در دیتابیس
             yeni_bilet = models.BiletAktif(
                 baglantikodu=yeni_baglanti_kodu,
                 hastaid=eski_hasta_id,
@@ -337,7 +355,6 @@ def ertele_veya_iptal_et(ertele_data: schemas.BiletErteleme, db: Session = Depen
             db.refresh(yeni_bilet)
             
             return yeni_bilet
-
         except Exception as e:
             db.rollback()
             print(f"ERTELEME HATASI: {e}")

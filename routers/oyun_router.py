@@ -50,29 +50,32 @@ def kayit_skor(skor_data: schemas.SkorCreate, db: Session = Depends(get_db)):
 
 
 # ------------------ 2) دریافت لیدربورد ------------------
+from sqlalchemy import func
+
 @router.get("/liderler/{oyun_adi}", response_model=list[schemas.SkorBase])
 def get_liderler(oyun_adi: str, db: Session = Depends(get_db)):
     """
-    Bir oyun için en yüksek 10 skoru getirir.
+    Bir oyun için HER KULLANICININ EN YÜKSEK skorunu getirir (Top 10).
     """
 
     try:
         liderler = (
             db.query(
                 models.Hasta.adsoyad.label("adsoyad"),
-                models.OyunSkoru.skor.label("skor"),
-                models.OyunSkoru.tarih.label("tarih")
+                func.max(models.OyunSkoru.skor).label("skor")
             )
-            .join(models.Hasta, models.OyunSkoru.hastaid == models.Hasta.hastaid)
+            .join(
+                models.Hasta,
+                models.OyunSkoru.hastaid == models.Hasta.hastaid
+            )
             .filter(models.OyunSkoru.oyunadi == oyun_adi)
-            .order_by(desc(models.OyunSkoru.skor))
+            .group_by(models.Hasta.adsoyad)
+            .order_by(func.max(models.OyunSkoru.skor).desc())
             .limit(10)
             .all()
         )
-    except Exception as e:
-        print("\n--- DATABASE ERROR ---")
+    except Exception:
         traceback.print_exc()
-        print("--- END ERROR ---\n")
         raise HTTPException(status_code=500, detail="Liderboard alınamadı.")
 
     return liderler

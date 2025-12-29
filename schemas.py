@@ -168,13 +168,11 @@ class SkorCreate(BaseModel):
 
 # خروجی برای نمایش در Leaderboard
 class SkorBase(BaseModel):
-    adsoyad: str  # نام بیمار (از JOIN می‌آید)
+    adsoyad: str
     skor: int
-    tarih: datetime
-    
+
     class Config:
         from_attributes = True
-    
 # =================================================================
 # ۱۱. مدل افزودن دکتر (Admin - Doktor Ekleme)
 # =================================================================
